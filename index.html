@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>오목 게임</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f4f1ea;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      color: #333;
+    }
+
+    h1 {
+      margin-bottom: 12px;
+      font-size: 28px;
+      color: #2c2c2c;
+    }
+
+    .status-panel {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .turn-indicator {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .turn-indicator.black {
+      background: #111;
+    }
+
+    .turn-indicator.white {
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    .board-container {
+      position: relative;
+      background-color: #e3a857; /* 원목 느낌의 바둑판 색상 */
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    }
+
+    canvas {
+      display: block;
+      cursor: pointer;
+    }
+
+    .controls {
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      background-color: #3b82f6;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    button:hover {
+      background-color: #2563eb;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>오목 (Gomoku)</h1>
+
+  <div class="status-panel">
+    <span id="turn-badge" class="turn-indicator black"></span>
+    <span id="status-text">흑돌의 차례입니다.</span>
+  </div>
+
+  <div class="board-container">
+    <canvas id="omokCanvas" width="560" height="560"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="resetBtn">게임 다시 시작</button>
+  </div>
+
+  <script>
+    const BOARD_SIZE = 15;
+    const PADDING = 28;
+    const CELL_SIZE = 36;
+    
+    const canvas = document.getElementById('omokCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status-text');
+    const turnBadge = document.getElementById('turn-badge');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // 0: 빈칸, 1: 흑돌, 2: 백돌
+    let board = [];
+    let currentPlayer = 1; // 1: 흑, 2: 백
+    let gameOver = false;
+
+    // 게임 초기화
+    function initGame() {
+      board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+      currentPlayer = 1;
+      gameOver = false;
+      updateStatus();
+      drawBoard();
+    }
+
+    // 상태 안내 업데이트
+    function updateStatus() {
+      if (gameOver) return;
+      if (currentPlayer === 1) {
+        statusText.textContent = "흑돌의 차례입니다.";
+        turnBadge.className = "turn-indicator black";
+      } else {
+        statusText.textContent = "백돌의 차례입니다.";
+        turnBadge.className = "turn-indicator white";
+      }
+    }
+
+    // 바둑판 그리기
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 격자선 그리기
+      ctx.strokeStyle = '#4a2e00';
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i < BOARD_SIZE; i++) {
+        // 가로선
+        ctx.beginPath();
+        ctx.moveTo(PADDING, PADDING + i * CELL_SIZE);
+        ctx.lineTo(PADDING + (BOARD_SIZE - 1) * CELL_SIZE, PADDING + i * CELL_SIZE);
+        ctx.stroke();
+
+        // 세로선
+        ctx.beginPath();
+        ctx.moveTo(PADDING + i * CELL_SIZE, PADDING);
+        ctx.lineTo(PADDING + i * CELL_SIZE, PADDING + (BOARD_SIZE - 1) * CELL_SIZE);
+        ctx.stroke();
+      }
+
+      // 화점 (Star Points) 표시 (3, 7, 11 위치)
+      const starPoints = [3, 7, 11];
+      ctx.fillStyle = '#4a2e00';
+      starPoints.forEach(r => {
+        starPoints.forEach(c => {
+          ctx.beginPath();
+          ctx.arc(PADDING + c * CELL_SIZE, PADDING + r * CELL_SIZE, 4, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+
+      // 착수된 돌 그리기
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== 0) {
+            drawStone(r, c, board[r][c]);
+          }
+        }
+      }
+    }
+
+    // 돌 그리기 (입체감 효과 추가)
+    function drawStone(row, col, player) {
+      const x = PADDING + col * CELL_SIZE;
+      const y = PADDING + row * CELL_SIZE;
+      const radius = CELL_SIZE / 2 - 3;
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+      const gradient = ctx.createRadialGradient(
+        x - radius / 3, y - radius / 3, radius / 10,
+        x, y, radius
+      );
+
+      if (player === 1) { // 흑돌
+        gradient.addColorStop(0, '#666');
+        gradient.addColorStop(1, '#000');
+      } else { // 백돌
+        gradient.addColorStop(0, '#fff');
+        gradient.addColorStop(1, '#d0d0d0');
+      }
+
+      ctx.fillStyle = gradient;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      ctx.fill();
+
+      // 그림자 리셋
+      ctx.shadowColor = 'transparent';
+    }
+
+    // 승리 조건 체크 (가로, 세로, 대각선 2방향)
+    function checkWin(row, col, player) {
+      const directions = [
+        [[0, 1], [0, -1]],   // 가로
+        [[1, 0], [-1, 0]],   // 세로
+        [[1, 1], [-1, -1]],  // 대각선 (↘ ↖)
+        [[1, -1], [-1, 1]]   // 대각선 (↙ ↗)
+      ];
+
+      for (let dir of directions) {
+        let count = 1;
+
+        for (let [dr, dc] of dir) {
+          let r = row + dr;
+          let c = col + dc;
+
+          while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+            count++;
+            r += dr;
+            c += dc;
+          }
+        }
+
+        if (count >= 5) return true;
+      }
+      return false;
+    }
+
+    // 클릭 이벤트 처리
+    canvas.addEventListener('click', (e) => {
+      if (gameOver) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      // 교차점 인덱스 계산 (가장 가까운 교차점으로 내림/반올림)
+      const col = Math.round((clickX - PADDING) / CELL_SIZE);
+      const row = Math.round((clickY - PADDING) / CELL_SIZE);
+
+      // 보드 범위 벗어남 체크
+      if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return;
+
+      // 이미 돌이 놓여진 자리 체크
+      if (board[row][col] !== 0) return;
+
+      // 돌 놓기
+      board[row][col] = currentPlayer;
+      drawBoard();
+
+      // 승리 확인
+      if (checkWin(row, col, currentPlayer)) {
+        gameOver = true;
+        const winner = currentPlayer === 1 ? "흑돌" : "백돌";
+        statusText.textContent = `🎉 ${winner} 승리!`;
+        return;
+      }
+
+      // 차례 교대
+      currentPlayer = currentPlayer === 1 ? 2 : 1;
+      updateStatus();
+    });
+
+    // 재시작 버튼
+    resetBtn.addEventListener('click', initGame);
+
+    // 최초 게임 시작
+    initGame();
+  </script>
+</body>
+</html>
